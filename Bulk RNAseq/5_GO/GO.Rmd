@@ -1,0 +1,363 @@
+---
+title: "Gene Ontology - Kalyani June '24"
+author: "Rachel Griffard"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_document:
+    theme: lumen
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(org.Hs.eg.db)
+library(ggplot2)
+library(enrichplot)
+library(ReactomePA)
+library(dplyr)
+```
+
+```{r}
+rm(list = ls())
+setwd("S:\\Biostats\\BIO-STAT\\Koestler Devin\\Rachel Griffard\\Collaborations\\Pyaram_Kalyani\\061024_bulkRNA_kalyani\\GO")
+
+system(paste('mkdir ClusterProfiler GSEAanalysis ReactomeAnalysis'))
+
+```
+
+## Read the data and perform modifications
+```{r}
+genelist = read.table("../Deseq2_DE.txt", header = TRUE, row.names = 1, sep = "\t")
+genelist = genelist[order(genelist$log2FoldChange),]
+
+# get entrez ids
+ids = bitr(rownames(genelist),"SYMBOL","ENTREZID", OrgDb = org.Mm.eg.db)
+
+# add to table
+genelist = merge(genelist, ids, by.x = 0, by.y = 1, all.x = T)
+
+# remove those not mapped with entrez ids
+genelist = na.omit(genelist)
+colnames(genelist)[1]= "Gene"
+genelist = genelist %>% relocate(ENTREZID, .after = Gene)
+colnames(genelist)[colnames(genelist) == "ENTREZID"] = "EntrezID"
+```
+
+## Seperate the gene list as Up and regualted elements
+```{r}
+up.list = genelist[ which (genelist$pvalue<0.05 & genelist$log2FoldChange>0), ]
+write.csv(up.list, "sig_upregualted.csv")
+
+down.list = genelist[ which (genelist$pvalue<0.05 & genelist$log2FoldChange<0), ]
+write.csv(down.list, "sig_downregualted.csv")
+```
+
+## Derive the GO terms seperately for up and downregualted genes
+```{r}
+# Biological process (BP)
+upreg.BP = enrichGO(up.list$EntrezID,
+                     OrgDb = org.Mm.eg.db,
+                     ont="BP",
+                     minGSSize = 5, maxGSSize = 500,
+                     pvalueCutoff = 0.05, 
+                     readable = T)
+downreg.BP = enrichGO(down.list$EntrezID,
+                       OrgDb = org.Mm.eg.db,
+                       ont="BP",
+                       minGSSize = 5, maxGSSize = 500,
+                       pvalueCutoff = 0.05, 
+                       readable = T)
+
+# Molecular function (MF)
+upreg.MF = enrichGO(up.list$EntrezID,
+                     OrgDb = org.Mm.eg.db,
+                     ont = "MF",
+                     minGSSize = 5, maxGSSize = 500,
+                     pvalueCutoff = 0.05,
+                     readable = T)
+
+downreg.MF = enrichGO(down.list$EntrezID,
+                     OrgDb = org.Mm.eg.db,
+                     ont = "MF",
+                     minGSSize = 5, maxGSSize = 500,
+                     pvalueCutoff = 0.05,
+                     readable = T)
+
+# Cellular component (CC)
+upreg.CC = enrichGO(up.list$EntrezID,
+                     OrgDb = org.Mm.eg.db,
+                     ont = "CC",
+                     minGSSize = 5, maxGSSize = 500,
+                     pvalueCutoff = 0.05, 
+                     readable = T)
+downreg.CC = enrichGO(down.list$EntrezID,
+                     OrgDb = org.Mm.eg.db,
+                     ont = "CC",
+                     minGSSize = 5, maxGSSize = 500,
+                     pvalueCutoff = 0.05, 
+                     readable = T)
+
+# KEGG
+upreg.KEGG = enrichKEGG(gene = up.list$EntrezID,
+                         pvalueCutoff = 0.05,
+                         organism = "mmu",
+                         keyType = "kegg",
+                         pAdjustMethod = "BH",
+                         minGSSize = 5,
+                         maxGSSize = 500,
+                         use_internal_data = FALSE)
+downreg.KEGG = enrichKEGG(gene = down.list$EntrezID,
+                           pvalueCutoff = 0.05,
+                           organism = "mmu",
+                           keyType = "kegg",
+                           pAdjustMethod = "BH",
+                           minGSSize = 5,
+                           maxGSSize = 500,
+                           use_internal_data = FALSE)
+```
+
+## Write CSV files
+```{r}
+write.csv(upreg.BP, "ClusterProfiler/upreg_Biological_Process.csv")
+write.csv(downreg.BP, "ClusterProfiler/downreg_Biological_Process.csv")
+write.csv(upreg.MF, "ClusterProfiler/upreg_Molecualr_Functions.csv")
+write.csv(downreg.MF, "ClusterProfiler/downreg_Molecualr_Function.csv")
+write.csv(upreg.CC, "ClusterProfiler/upreg_Cellular_Component.csv")
+write.csv(downreg.CC, "ClusterProfiler/downreg_Cellular_Component.csv")
+write.csv(upreg.KEGG, "ClusterProfiler/upreg_KEGG_Pathways.csv")
+write.csv(downreg.KEGG, "ClusterProfiler/downreg_KEGG_Pathways.csv")
+```
+
+## Generate the dot plots
+```{r}
+dotplot(upreg.BP, showCategory = 20, label_format = 80) + ggtitle("ClusterProfiler/Upregulated Biological Process")
+dotplot(downreg.BP, showCategory = 20, label_format = 80) + ggtitle("ClusterProfiler/Downregualted Biological Process")
+dotplot(upreg.MF, showCategory = 20, label_format = 80) + ggtitle("ClusterProfiler/Upregulated Molecular Functions")
+dotplot(downreg.MF, showCategory = 20, label_format = 80) + ggtitle("ClusterProfiler/Downregulated Molecular Functions")
+dotplot(upreg.CC, showCategory = 20, label_format = 80) + ggtitle("ClusterProfiler/Upregulated Cellular Component")
+dotplot(downreg.CC, showCategory = 20, label_format = 80) + ggtitle("ClusterProfiler/Downregulated Cellular Component")
+dotplot(upreg.KEGG, showCategory = 20, label_format = 80) + ggtitle("ClusterProfiler/Upregulated KEGG pathways")
+dotplot(downreg.KEGG, showCategory = 20, label_format = 80) + ggtitle("ClusterProfiler/Downregulated KEGG pathways")
+```
+
+# Generate bar plots
+```{r}
+barplot(upreg.BP, showCategory = 20, label_format = 70) + ggtitle("ClusterProfiler/Upregulated Biological Process")
+barplot(downreg.BP, showCategory = 20, label_format = 70) + ggtitle("ClusterProfiler/Downregualted Biological Process")
+barplot(upreg.MF, showCategory = 20, label_format = 70) + ggtitle("ClusterProfiler/Upregulated Molecular Functions")
+barplot(downreg.MF, showCategory = 20, label_format = 70) + ggtitle("ClusterProfiler/Downregulated Molecular Functions")
+barplot(upreg.CC, showCategory = 20, label_format = 70) + ggtitle("ClusterProfiler/Upregulated Cellular Component")
+barplot(downreg.CC, showCategory = 20, label_format = 70) + ggtitle("ClusterProfiler/Downregulated Cellular Component")
+barplot(upreg.KEGG, showCategory = 20, label_format = 70) + ggtitle("ClusterProfiler/Upregulated KEGG Pathways")
+barplot(downreg.KEGG, showCategory = 20, label_format = 70) + ggtitle("ClusterProfiler/Downregulated KEGG Pathways")
+```
+
+
+```{r}
+# Create a list of titles and corresponding plots
+titles = c(
+  "Upregulated Biological Process",
+  "Downregulated Biological Process",
+  "Upregulated Molecular Functions",
+  "Downregulated Molecular Functions",
+  "Upregulated Cellular Component",
+  "Downregulated Cellular Component",
+  "Upregulated KEGG Pathways",
+  "Downregulated KEGG Pathways"
+)
+
+plots = list(
+  dotplot(upreg.BP, showCategory = 20, label_format = 70),
+  dotplot(downreg.BP, showCategory = 20, label_format = 70),
+  dotplot(upreg.MF, showCategory = 20, label_format = 70),
+  dotplot(downreg.MF, showCategory = 20, label_format = 70),
+  dotplot(upreg.CC, showCategory = 20, label_format = 70),
+  dotplot(downreg.CC, showCategory = 20, label_format = 70),
+  dotplot(upreg.KEGG, showCategory = 20, label_format = 70),
+  dotplot(downreg.KEGG, showCategory = 20, label_format = 70)
+)
+
+# Names for the saved image files
+image_names = paste0("ClusterProfiler/", titles, ".png")
+
+# Loop through plots and save them
+for (i in seq_along(plots)) {
+  ggsave(file = image_names[i], plot = plots[[i]], width = 9, height = 6)  # Adjust width and height as needed
+}
+
+# Print the saved image names
+image_names
+
+```
+
+
+
+
+```{r}
+
+# Create a list of titles and corresponding plots
+titles = c(
+  "Upregulated Biological Process",
+  "Downregulated Biological Process",
+  "Upregulated Molecular Functions",
+  "Downregulated Molecular Functions",
+  "Upregulated Cellular Component",
+  "Downregulated Cellular Component",
+  "Upregulated KEGG Pathways",
+  "Downregulated KEGG Pathways"
+)
+
+plots = list(
+  barplot(upreg.BP, showCategory = 20, label_format = 70),
+  barplot(downreg.BP, showCategory = 20, label_format = 70),
+  barplot(upreg.MF, showCategory = 20, label_format = 70),
+  barplot(downreg.MF, showCategory = 20, label_format = 70),
+  barplot(upreg.CC, showCategory = 20, label_format = 70),
+  barplot(downreg.CC, showCategory = 20, label_format = 70),
+  barplot(upreg.KEGG, showCategory = 20, label_format = 70),
+  barplot(downreg.KEGG, showCategory = 20, label_format = 70)
+)
+
+# Names for the saved image files
+image_names = paste0("ClusterProfiler/" ,titles, ".png")
+
+# Loop through plots and save them
+for (i in seq_along(plots)) {
+  ggsave(file = image_names[i], plot = plots[[i]], width = 8, height = 6)  # Adjust width and height as needed
+}
+
+# Print the saved image names
+image_names
+
+```
+
+
+# Rectome Analysis
+```{r}
+upreg.reactome = enrichPathway(up.list$EntrezID,
+                               organism = "mouse",
+                               minGSSize = 5, maxGSSize = 500,
+                               pvalueCutoff = 0.05, pAdjustMethod = "BH",
+                               readable = T)
+
+downreg.reactome = enrichPathway(down.list$EntrezID,
+                                 organism = "mouse",
+                                 minGSSize = 5, maxGSSize = 500,
+                                 pvalueCutoff = 0.05, pAdjustMethod = "BH",
+                                 readable = T)
+write.csv(upreg.reactome, "ReactomeAnalysis/upreg_reactome_pathways.csv")
+write.csv(downreg.reactome, "ReactomeAnalysis/downreg_reactome_pathways.csv")
+
+```
+
+## Reactome plots
+```{r}
+# Create a list of titles and corresponding plots
+titles = c(
+  "Upreguated Reactome pathways",
+  "Downreguated Reactome pathways"
+)
+
+dotplot(upreg.reactome, showCategory = 20, label_format = 80) + ggtitle("Upreguated Reactome pathways"),
+dotplot(downreg.reactome, showCategory = 20, label_format = 80) + ggtitle("Downreguated Reactome pathways")
+
+plots = list(
+  dotplot(upreg.reactome, showCategory = 20, label_format = 80) + ggtitle("Upreguated Reactome pathways"),
+  dotplot(downreg.reactome, showCategory = 20, label_format = 80) + ggtitle("Downreguated Reactome pathways")
+)
+
+# Names for the saved image files
+image_names = paste0("ReactomeAnalysis/" ,titles, ".png")
+
+# Loop through plots and save them
+for (i in seq_along(plots)) {
+  ggsave(file = image_names[i], plot = plots[[i]], width = 9, height = 6)  # Adjust width and height as needed
+}
+
+# Print the saved image names
+image_names
+```
+
+
+# Gene set enrichment analysis
+```{r warning=FALSE}
+# Make a vector for GSE analysis with entrez IDs and their log2fold changes
+gse.list = genelist$log2FoldChange
+names(gse.list) = genelist$EntrezID
+gse.list = sort(gse.list, decreasing = T)
+
+# GSE GO terms
+
+GSE.BP = gseGO(gse.list,
+                OrgDb = org.Mm.eg.db,
+                ont = "BP",
+                minGSSize = 5,
+                maxGSSize = 500,
+                pvalueCutoff = 0.05)
+GSE.MF = gseGO(gse.list,
+                OrgDb = org.Mm.eg.db,
+                ont = "MF",
+                minGSSize = 5,
+                maxGSSize = 500,
+                pvalueCutoff = 0.05)
+GSE.CC = gseGO(gse.list,
+                OrgDb = org.Mm.eg.db,
+                ont = "CC",
+                minGSSize = 5,
+                maxGSSize = 500,
+                pvalueCutoff = 0.05)
+GSE.Pathways = gsePathway(gse.list,
+                           organism = "mouse",
+                           minGSSize = 1,
+                           maxGSSize = 500,
+                           pvalueCutoff = 0.05,
+                           pAdjustMethod = "BH")
+
+write.csv(GSE.BP, "GSEAanalysis/GSE_BP.csv")
+write.csv(GSE.MF, "GSEAanalysis/GSE_MF.csv")
+write.csv(GSE.CC, "GSEAanalysis/GSE_CC.csv")
+write.csv(GSE.Pathways, "GSEAanalysis/GSE_Pathways.csv")
+```
+
+#GSEA plots
+
+```{r}
+
+dotplot(GSE.BP, showCategory = 20, label_format = 80) + ggtitle("GSE Biological Process"),
+dotplot(GSE.MF, showCategory = 20, label_format = 80) + ggtitle("GSE Molecular Functions"),
+dotplot(GSE.CC, showCategory = 20, label_format = 80) + ggtitle("GSE Cellular Component"),
+dotplot(GSE.Pathways, showCategory = 20, label_format = 80) + ggtitle("GSE Pathways")
+
+# Create a list of titles and corresponding plots
+titles = c(
+  "GSE Biological Process",
+  "GSE Molecular Functions",
+  "GSE Cellular Component",
+  "GSE Pathways"
+)
+
+plots = list(
+dotplot(GSE.BP, showCategory = 20, label_format = 80) + ggtitle("GSE Biological Process"),
+dotplot(GSE.MF, showCategory = 20, label_format = 80) + ggtitle("GSE Molecular Functions"),
+dotplot(GSE.CC, showCategory = 20, label_format = 80) + ggtitle("GSE Cellular Component"),
+dotplot(GSE.Pathways, showCategory = 20, label_format = 80) + ggtitle("GSE Pathways")
+)
+
+# Names for the saved image files
+image_names = paste0('GSEAanalysis/',titles, ".png")
+
+# Loop through plots and save them
+for (i in seq_along(plots)) {
+  ggsave(file = image_names[i], plot = plots[[i]], width = 8, height = 6)  # Adjust width and height as needed
+}
+
+# Print the saved image names
+image_names
+```
+
+# save the image data
+```{r}
+save.image(file = "GO_KO_v_WT.Rdata")
+```
+
