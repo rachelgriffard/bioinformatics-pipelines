@@ -20,7 +20,7 @@ library(dplyr)
 
 ```{r}
 rm(list = ls())
-setwd("S:\\Biostats\\BIO-STAT\\Koestler Devin\\Rachel Griffard\\Collaborations\\Pyaram_Kalyani\\061024_bulkRNA_kalyani\\GO")
+setwd("~\\GO") # set working directory
 
 system(paste('mkdir ClusterProfiler GSEAanalysis ReactomeAnalysis'))
 

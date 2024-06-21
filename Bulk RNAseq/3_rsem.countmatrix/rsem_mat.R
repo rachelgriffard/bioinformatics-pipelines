@@ -2,8 +2,8 @@
 # Rachel Griffard
 # Last updated: 061124
 
-samples = scan('/panfs/pfs.local/home/r816g589/work/collaborations/kalyani/240509/samples.txt', what='', sep='\n')
-path = '/panfs/pfs.local/home/r816g589/work/collaborations/kalyani/240509/'
+samples = scan('samples.txt', what='', sep='\n')
+path = '~/' # file path to drop count matrix into
 
 summary.ret = function(path, samples){
   

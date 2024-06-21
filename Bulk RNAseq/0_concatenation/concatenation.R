@@ -1,10 +1,10 @@
 # Concatenation process
-# setwd("S:\\Biostats\\BIO-STAT\\Koestler Devin\\Rachel Griffard\\Collaborations\\Pyaram_Kalyani\\061024_bulkRNA_kalyani")
+# setwd()
 
 
-raw_path = "/panfs/pfs.local/home/r816g589/work/collaborative/Kalyani/240509/raw_files"
-samples = scan("samples.txt", what="", sep="\n")
-cat_path = "/panfs/pfs.local/home/r816g589/work/collaborative/Kalyani/240509/cat_files"
+raw_path = "~/raw_files" # file path to raw files
+samples = scan("samples.txt", what="", sep="\n") # text file with sample names on each line
+cat_path = "~/cat_files" # file path to new concatenated files
 
 for (sample in samples[1:length(samples)]){
   # concatenation
