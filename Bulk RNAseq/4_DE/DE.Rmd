@@ -1,0 +1,177 @@
+---
+title: "Differential Expression Analysis"
+author: Rachel Griffard
+date: "`r Sys.Date()`"
+
+output:
+  rmarkdown::html_document:
+    theme: lumen
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Load the libraries
+library(edgeR)
+library(RColorBrewer)
+library(tidyverse)
+library(ggrepel)
+library(FactoMineR)
+library(DESeq2)
+library(ggplot2)
+```
+
+# Differential Expression with DESeq2
+## Read in data
+```{r}
+samples = scan('samples.txt', what='', sep='\n') # samples text file with sample names on each line
+
+counts = read.delim('genes.count.matrix') # from rsem
+
+counts = counts %>% 
+  column_to_rownames('X') # rownames as genes
+
+colnames(counts) = samples # rename columns as samples (check)
+
+group = c('WT', 'KO', 'KO', 'KO', 'WT', 'WT') # grouping ordered by columns
+
+coldata = data.frame(row.names = samples,
+                     condition = group)
+
+write.csv(coldata, 'sampleinfo.csv')
+
+all(rownames(coldata) %in% colnames(counts))
+
+# remove genes with all zero counts
+counts = counts[rowSums(counts != 0) > 0, ]
+write.csv(counts, "gene.counts.matrix.csv")
+```
+
+## Principal components analysis
+```{r}
+# Perform PCA on the expression data
+pca = prcomp(t(as.matrix(counts)), scale = T)
+
+# Calculate the proportion of variance explained by each PC
+var_explained = pca$sdev^2/sum(pca$sdev^2)
+
+# Choose the number of PCs that explain 90% of the variance
+chosen_pc_count = which(cumsum(var_explained) >= 0.9)[1]
+
+# Extract the chosen PCs from the PCA result
+chosen_pcs = pca$x[, 1:chosen_pc_count]
+
+# Create a data frame with chosen PCs
+df = as.data.frame(cbind(chosen_pcs, 'condition' = coldata[,c("condition")]))
+
+# Plot the chosen PCs
+df %>%
+  ggplot(aes(x=PC1, y=PC2))+
+  geom_point(aes(color = condition), size =5) +
+  theme(text = element_text(size = 17),
+        axis.text.x = element_text(size = 17),
+        axis.text.y = element_text(size = 17)) +
+  scale_x_discrete(guide = guide_axis(angle = 90)) +
+    labs(x=paste0("PC1: ",round(var_explained[1]*100,1),"%"),
+       y=paste0("PC2: ",round(var_explained[2]*100,1),"%"),
+       title="Principal components analysis") +
+  theme_bw()
+# Save the PCA plot as a TIFF file with 300 DPI
+output_file = "pca_plot.tiff"
+ggsave(filename = output_file, plot = last_plot(), dpi = 300)
+```
+
+# Normalization of count data using edgeR
+```{r}
+DG.list = DGEList(counts = counts, group = coldata$condition)
+com.disp.counts = estimateCommonDisp(DG.list)
+tag.disp.counts = estimateTagwiseDisp(com.disp.counts)
+cal.norm.fact = calcNormFactors(tag.disp.counts)
+nor.counts = cpm(cal.norm.fact)
+write.csv(nor.counts, "normalized_count_data.csv")
+norm.counts = as.data.frame(nor.counts)
+```
+
+# edgeR Differential Expression analysis
+```{r}
+# use dge list from prior section
+
+# filter counts matrix
+n = 3 # smallest group number of samples
+keep = rowSums(cpm(DG.list)>1) >= n
+sum(keep) # how many genes left once removed
+
+DG.list = DG.list[keep,] # subset
+dim(DG.list)
+
+# calc scaling factors, converts raw lib size into effective lib size
+DG.list = calcNormFactors(DG.list)
+
+design = model.matrix(~0+group)
+rownames(design) = colnames(counts)
+
+# est negative binomial dispersion
+y1 = estimateDisp(DG.list, design) # 
+
+# coefficient of variation of biological variation
+sqrt(y1$common.dispersion)
+plotBCV(y1)
+
+# fit genewise GLMs
+fit = glmQLFit(y1, design)
+# contrast for comparison we are interested in of two groups
+qlf = glmQLFTest(fit, contrast=c(1,-1))
+
+topTags(qlf)
+
+res = qlf$table
+```
+
+
+
+# DeSeq2 Differential Expression analysis
+```{r}
+# truncate to whole numbers (reqd for DESeq2)
+d.counts = trunc(counts)
+
+# create DESeq object
+dds = DESeqDataSetFromMatrix(countData = round(counts),
+                             colData = coldata,
+                             design = ~ condition)
+
+dds$condition = relevel(dds$condition, ref = "WT") # make wildtype reference level
+# testing
+dds = DESeq(dds)
+
+resultsNames(dds)
+
+res = results(dds, name = "condition_KO_vs_WT")
+summary(res)
+
+deseq2.diff.genes = as.data.frame(subset(res, padj < 0.5))
+dim(deseq2.diff.genes)
+deseq2.diff.genes = tibble::rownames_to_column(deseq2.diff.genes,"Symbol")
+
+ write.table(deseq2.diff.genes, file = "Deseq2_DE.txt",
+             sep = "\t", quote = F, row.names = F)
+```
+
+
+# Volcano plot
+Can be adjusted to fit 'res' frame from edgeR output too. Labeled volcano plot housed in visualizations folder.
+```{r}
+ggplot(deseq2.diff.genes, aes(x = log2FoldChange, y = -log10(pvalue))) +
+  geom_point(size = 1, aes(color = ifelse(log2FoldChange > 0.5 & pvalue <= 0.05, "Upregulated",
+                                ifelse(log2FoldChange < -0.5 & pvalue <= 0.05, "Downregulated", "Non-significant"))),
+             alpha = 0.4) +
+  scale_color_manual(values = c("Upregulated" = "red", "Downregulated" = "blue", "Non-significant" = "gray"),
+                     name = "") +
+  geom_vline(xintercept=c(-0.6, 0.6), alpha=0.5, color="black", linetype = 'dashed') +
+  geom_hline(yintercept=-log10(0.05), alpha=0.5, color="black", linetype = 'dashed') +
+  labs(title = "KO v WT", y=expression(-log[10](pvalue)), x=expression(log[2]~Fold~Change)) +
+  theme_bw() +
+  theme(legend.position = "right") 
+
+# Save the plot as a TIFF file with 300 DPI
+output_file = "volcano_plot.tiff"
+ggsave(filename = output_file, plot = last_plot(), height = 6, width = 7,  dpi = 300)
+```
