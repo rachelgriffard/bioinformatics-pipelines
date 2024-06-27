@@ -1,0 +1,156 @@
+---
+title: "Bulk RNAseq Visualizations"
+author: "Rachel Griffard"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ComplexHeatmap)
+library(tidyverse)
+library(ggrepel) # geom_text_repel for labels
+```
+
+# Read in normalized counts data and interest
+```{r}
+# normalized counts
+ncounts = read.csv('normalized_count_data.csv', row.names = 1)
+
+# interest file
+int = read.csv('interest.csv') # csv file with names of genes of interest from collaborators
+
+# DE genes
+de = read.delim('Deseq2_DE.txt')
+```
+
+
+# Colors for heatmaps
+```{r}
+library(circlize)
+# col_fun = colorRamp2(c(-2, 0, 2), c("black", "magenta", "white"))
+# col_fun = colorRamp2(c(-2, 0, 2), c("#440061", "#28a99e", "yellow"))
+col_fun = colorRamp2(c(-2, 0, 2), c("darkblue", "white", "darkred"))
+```
+
+
+# Heatmap for metabolic genes of interest
+```{r}
+gene = int$Gene
+
+gene_int = ncounts %>%
+  subset(rownames(ncounts) %in% gene)
+
+# scale
+gene_int_scaled = t(apply(gene_int, 1, scale))
+
+ha = HeatmapAnnotation(tmt = c('t','u','t','u','t','u'),
+        annotation_legend_param = list(
+          tmt = list(
+                title = "Treatment",
+                at = c("t", "u"),
+                labels = c("Treated", "Untreated")
+            )),
+        col = list(tmt = c('t' = 'gray35', 'u' = '#F4DF4EFF')))
+
+Heatmap(as.matrix(gene_int_scaled),
+        top_annotation = ha,
+        heatmap_legend_param = list(title = 'Scaled expression'),
+        column_labels = rep('', 6),
+        column_title = 'Metabolic gene expression',
+```
+
+
+# Boxplots
+```{r}
+b1 = int[1:3,3] # creates character string of gene names of interest
+
+b1_count = ncounts %>%
+  subset(rownames(ncounts) %in% b1) %>%
+  rownames_to_column('gene') %>%
+  pivot_longer(!gene, names_to = 'patient')
+
+b1_count$trt = ifelse(b1_count$patient == 'P1_100pM' | b1_count$patient ==  'P2_100pm' |
+                        b1_count$patient == 'P3_100pm', 'Treated', 'Untreated')
+
+p1 = b1_count %>%
+  filter(gene == 'HMOX1') %>%
+  ggplot(aes(trt, value)) +
+  geom_boxplot() +
+  ggtitle('HMOX1') +
+  ylab('CPM') + xlab('Treatment') +
+  theme_bw()
+ggsave('Figure3_HMOX1.png', p1, height = 5, width = 5)
+
+p2 = b1_count %>%
+  filter(gene == 'NQO1') %>%
+  ggplot(aes(trt, value)) +
+  geom_boxplot() +
+  ggtitle('NQO1') +
+  ylab('CPM') + xlab('Treatment') +
+  theme_bw()
+ggsave('Figure3_NQO1.png', p2, height = 5, width = 5)
+
+p3 = b1_count %>%
+  filter(gene == 'PRDX1') %>%
+  ggplot(aes(trt, value)) +
+  geom_boxplot() +
+  ggtitle('PRDX1') +
+  ylab('CPM') + xlab('Treatment') +
+  theme_bw()
+ggsave('Figure3_PRDX1.png', p3, height = 5, width = 5)
+
+cowplot::plot_grid(p1, p2, p3)
+ggsave('Figure3.png', height = 5, width = 5)
+```
+
+# Labeled Volcano plot
+# Labeled volcano plot
+
+```{r}
+# separate upregulated and downregulated and select top 10
+up_de_labels = de %>%
+  subset(log2FoldChange > 1) %>%
+  arrange(pvalue) %>%
+  select(Symbol)
+up_de_labels = up_de_labels[1:10,]
+down_de_labels = de %>%
+  subset(log2FoldChange < -1) %>%
+  arrange(pvalue) %>%
+  select(Symbol)
+down_de_labels = down_de_labels[1:10,]
+
+other_labels = c('KEAP1', 'NFE2L2', 'GCLC', 'GCLM') # those of interest from researchers
+
+all_labels = c(up_de_labels, down_de_labels, other_labels)
+
+# add label marker column to DE matrix
+de$label =ifelse(de$Symbol %in% all_labels,
+                        de$Symbol, '')
+
+# volcano plot
+ggplot(de, aes(x = log2FoldChange, y = -log10(pvalue))) +
+  geom_point(size = 1, aes(color = ifelse(log2FoldChange > 1 & pvalue <= 0.05, "Upregulated",
+                                ifelse(log2FoldChange < -1 & pvalue <= 0.05, "Downregulated", "Non-significant"))),
+             alpha = 0.4) +
+  scale_color_manual(values = c("Upregulated" = "red", "Downregulated" = "blue", "Non-significant" = "gray"),
+                     name = "") +
+  geom_vline(xintercept=c(-1,1), alpha=0.5, color="black", linetype = 'dashed') +
+  geom_hline(yintercept=-log10(0.05), alpha=0.5, color="black", linetype = 'dashed') +
+  geom_text_repel(aes(label = label),
+                  max.overlaps = Inf,
+                  box.padding = 0.5,
+                  seed = 42.,
+                  min.segment.length = 0,
+                  segment.curvature = -0.1,
+                  segment.ncp = 3, 
+                  segment.angle = 20,
+                  size = 3) +
+  labs(title = "Treated v Untreated", y=expression(-log[10](pvalue)), x=expression(log[2]~Fold~Change)) +
+  theme_bw() +
+  theme(legend.position = "right") 
+
+# Save the plot as a TIFF file with 300 DPI
+ggsave(filename = 'VolcanoPlotLabel.png', plot = last_plot(), height = 6, width = 7,  dpi = 300)
+```
