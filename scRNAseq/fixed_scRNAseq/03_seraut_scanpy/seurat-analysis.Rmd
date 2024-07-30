@@ -10,206 +10,577 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # Load libraries and data
-```{r}
-library(scrublet)
+
+```{r warning = FALSE, message = FALSE}
 library(Seurat)
-library(ggplot2)
 library(SingleR)
 library(dplyr)
 library(celldex)
 library(RColorBrewer)
 library(SingleCellExperiment)
+library(hdf5r)
+library(tidyverse)
+library(scales)
+library(biomaRt)
+library(knitr)
+library(metap)
 ```
 
+# Load in data and create Seurat object
 
+## Get list of file names
 
-```{r read-10X-data}
-adj.matrix <- Read10X("dat")
+```{r text-file-samples, eval = FALSE}
+samples = list.files("") # put in file path to samples
+
+dir.path = 'rawdata/' # name of directory with files
 ```
 
+```{r read-10X-data, eval = FALSE}
+setwd() # set working directory for output
 
-# Create Seurat object
-```{r}
-srt = CreateSeuratObject(adj.matrix, project = "pbmc10k")
-srt
+read.data = function(sample){
+  counts = Read10X_h5(paste0(dir.path, sample, "/sample_filtered_feature_bc_matrix.h5")) # based on name of .h5
 
-# remove adj.matrix
-remove(adj.matrix)
+
+  # create a Seurat object containing the RNA data
+  obj = CreateSeuratObject(
+    counts = counts,
+    assay = "RNA"
+  )
+
+  obj[["percent.mt"]] = PercentageFeatureSet(obj, pattern = "^mt-") # change to MT if human
+  obj[["percent.ribosomal"]] = PercentageFeatureSet(obj, pattern = "^Rp") # change to RP if human
+
+  return(obj)
+}
+
+seurat.list = list()
+
+for (i in 1:length(samples)){
+  sample = samples[i]
+  cat(paste("/nreading data:", sample, "/n"))
+
+  seu.obj = read.data(sample)
+  seurat.list[[sample]] = seu.obj
+}
+
+
+# save list of samples as Seurat objects
+save(seurat.list, file = "Robjects/scRNA_SeuratObj_List_Sundar10X.RData") # saving list of seurat objects
+```
+
+## Create Seurat object
+
+Using the below function, also include metadata called orig.ident that identifies the sample by name
+
+```{r merge-samples, eval = FALSE}
+# create a merge Seurat object
+# There are 4 samples
+merged.obj = merge(seurat.list[[1]], y = c(seurat.list[[2]],seurat.list[[3]],seurat.list[[4]],seurat.list[[5]]),
+                   add.cell.ids = names(seurat.list))
+
+# Formatting orig.ident column so that it is the name of the sample
+# Based on sample name, check for new scenarios
+merged.obj$orig.ident = paste0(sapply(strsplit(rownames(merged.obj@meta.data),"_"),"[",1),"_",
+                               sapply(strsplit(rownames(merged.obj@meta.data),"_"),"[",2),"_",
+                               sapply(strsplit(rownames(merged.obj@meta.data),"_"),"[",3))
 ```
 
 # Basic QC and filtering
-```{r}
-meta <- srt@meta.data
-dim(meta)
 
-head(meta)
+Before filtering, it is important to look at these following plots to determine the appropriate thresholds. Most of this comes from the following site: <https://hbctraining.github.io/scRNA-seq/lessons/04_SC_quality_control.html>
+
+## QC plots pre-filtering
+
+```{r metrics}
+load("RObjects/scRNA_SeuratObj_Merged_Sundar10X_Metadata.RData")
+
+metadata$log10GenesPerUMI = log10(metadata$nFeature_RNA) / log10(metadata$nCount_RNA)
+
+metadata %>% 
+  	ggplot(aes(x=orig.ident, fill=orig.ident)) + 
+  	geom_bar() +
+  	theme_classic() +
+  	theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  	theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  	ggtitle("NCells") +
+  guides(x =  guide_axis(angle = 45)) +
+  theme_bw()
+ggsave('QC/Unfiltered/NCells.png', height = 6, width = 6, dpi = 'print')
+
+metadata.long = gather(metadata, type, value, 2:5)
+
+metadata.long %>%
+  ggplot(aes(x = orig.ident, y = value, fill = orig.ident)) + 
+  geom_violin() + 
+  # geom_point() +
+  facet_wrap(vars(type), ncol = 2, scales = "free")  +
+  theme_bw()
+ggsave('QC/Unfiltered/Violin.png', height = 6, width = 6, dpi = 'print')
+
+# log scaled
+metadata %>% 
+  	ggplot(aes(color=orig.ident, x=nCount_RNA, fill= orig.ident)) + 
+  	geom_density(alpha = 0.2) + 
+  	scale_x_log10() +
+  	theme_classic() +
+    geom_vline(xintercept = 500) +
+  	ylab("Cell density") +
+    xlab("nCount_RNA (nUMI)") +
+  theme_bw()
+ggsave('QC/Unfiltered/CellDensity_nUMI.png', height = 6, width = 6, dpi = 'print')
+
+metadata %>% 
+  	ggplot(aes(color=orig.ident, x=nFeature_RNA, fill= orig.ident)) + 
+  	geom_density(alpha = 0.2) + 
+  	theme_classic() +
+  	scale_x_log10() +
+  	geom_vline(xintercept = c(100,250,9000)) +
+  	ggtitle("nGenes per Cell") +
+  theme_bw()
+ggsave('QC/Unfiltered/nGenesperCell.png', height = 6, width = 6, dpi = 'print')
+
+metadata %>% 
+  	ggplot(aes(x=nCount_RNA, y=nFeature_RNA, color=percent.mt)) + 
+  	geom_point() + 
+	scale_colour_gradient(low = "gray90", high = "black") +
+  	stat_smooth(method=lm) +
+  	scale_x_log10() +
+  	scale_y_log10() +
+  	theme_classic() +
+  	# geom_vline(xintercept = 500) +
+  	geom_hline(yintercept = 250) +
+  	facet_wrap(~orig.ident) +
+  theme_bw()
+ggsave('QC/Unfiltered/nCount_RNAvnFeature_RNA.png', height = 6, width = 6, dpi = 'print')
+
+metadata %>% 
+  	ggplot(aes(color=orig.ident, x=percent.mt, fill=orig.ident)) + 
+  	geom_density(alpha = 0.2) + 
+  	# scale_x_log10() +
+  	theme_classic() +
+  	geom_vline(xintercept = 10) +
+  theme_bw()
+ggsave('QC/Unfiltered/percent_mt.png', height = 6, width = 6, dpi = 'print')
+
+metadata %>%
+  	ggplot(aes(x=log10GenesPerUMI, color = orig.ident, fill=orig.ident)) +
+  	geom_density(alpha = 0.2) +
+  	theme_classic() +
+  	geom_vline(xintercept = 0.8) +
+  theme_bw()
+ggsave('QC/Unfiltered/log10GenesPerUMIvDensity.png', height = 6, width = 6, dpi = 'print')
+
+metadata %>%
+  ggplot(aes(x=log10GenesPerUMI, y=nFeature_RNA, color = log10(nCount_RNA))) +
+  geom_point() + 
+  facet_wrap(~orig.ident) +
+  theme_bw()
+ggsave('QC/Unfiltered/log10GenesPerUMIvnFeature_RNA.png', height = 6, width = 6, dpi = 'print')
 ```
 
-Below we can see the summaries for the # of UMI reads per cell (nCount_RNA) and the 
-number of expressed genes per that cell (nFeature_RNA)
-```{r}
-summary(meta$nCount_RNA)
-summary(meta$nFeature_RNA)
+### Summary statistics
+
+These are important statistics to compare to post filtering.
+
+```{r sum-stat-pre}
+metadata %>%
+  group_by(orig.ident) %>%
+  summarise(Ncells = n(), med_nCount_RNA = median(nCount_RNA), med_nFeature_RNA = median(nFeature_RNA),
+            mean_nCount_RNA = mean(nCount_RNA), mean_nFeature_RNA = mean(nFeature_RNA))
 ```
 
-Next, we will create extra columns identifying mitochondrial genes (MT-) as well as ribosomal proteins
-(RPS or RPL)
-```{r}
-srt[["percent.mt"]] <- PercentageFeatureSet(srt, pattern = "^MT-")
-srt[["percent.rb"]] <- PercentageFeatureSet(srt, pattern = "^RP[SL]")
+## Filtering
+
+The thresholds in the subset function are chosen after analyzing the plots above. They should be adjusted based on the experiment.
+
+### Metadata filtering
+
+Right now, we are only filtering the metadata, not the whole object yet.
+
+```{r filt-meta, warning = F}
+# setting various thresholds for filtering cells
+metadata.sub = subset(metadata, (nCount_RNA >= 500) & 
+                                (nFeature_RNA >= 200) &
+                                (nFeature_RNA <=9000) &
+                                (log10GenesPerUMI > 0.8) & 
+                                (percent.mt < 10))
+table(metadata$orig.ident)
+table(metadata.sub$orig.ident)
 ```
 
-## Include doublet annotation from *scrublet*
+### Summary statistics post-filtering
+
+```{r summ-stat-post}
+metadata.sub %>%
+  group_by(orig.ident) %>%
+  summarise(Ncells = n(), med_nCount_RNA = median(nCount_RNA), med_nFeature_RNA = median(nFeature_RNA),
+            mean_nCount_RNA = mean(nCount_RNA), mean_nFeature_RNA = mean(nFeature_RNA))
+```
+
+## QC after filtering
+
+Check plots after QC filtering has been done.
+
+```{r qc-post, warning = F}
+options(scipen=999)
+
+metadata = metadata.sub
+
+metadata %>% 
+  	ggplot(aes(x=orig.ident, fill=orig.ident)) + 
+  	geom_bar() +
+  	theme_classic() +
+  	theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  	theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  	ggtitle("NCells") +
+    guides(x =  guide_axis(angle = 45)) +
+  theme_bw()
+ggsave('QC/Filtered/NCells.png', height = 6, width = 6, dpi = 'print')
+
+metadata.long = gather(metadata, type, value, 2:5)
+
+metadata.long %>%
+  ggplot(aes(x = orig.ident, y = value, fill = orig.ident)) + 
+  geom_violin() + 
+  # geom_point() +
+  facet_wrap(vars(type), ncol = 2, scales = "free")  +
+  theme_bw()
+ggsave('QC/Filtered/Violin.png', height = 6, width = 6, dpi = 'print')
+
+# log scaled
+metadata %>% 
+  	ggplot(aes(color=orig.ident, x=nCount_RNA, fill= orig.ident)) + 
+  	geom_density(alpha = 0.2) + 
+  	scale_x_log10() +
+  	theme_classic() +
+    geom_vline(xintercept = 500) +
+  	ylab("Cell density") +
+    xlab("nCount_RNA (nUMI)") +
+  theme_bw()
+ggsave('QC/Filtered/CellDensity_nUMI.png', height = 6, width = 6, dpi = 'print')
+
+metadata %>% 
+  	ggplot(aes(color=orig.ident, x=nFeature_RNA, fill= orig.ident)) + 
+  	geom_density(alpha = 0.2) + 
+  	theme_classic() +
+  	scale_x_log10() +
+  	geom_vline(xintercept = c(100,250,9000)) +
+  	ggtitle("nGenes per Cell") +
+  theme_bw()
+ggsave('QC/Filtered/nGenesperCell.png', height = 6, width = 6, dpi = 'print')
+
+metadata %>% 
+  	ggplot(aes(x=nCount_RNA, y=nFeature_RNA, color=percent.mt)) + 
+  	geom_point() + 
+	scale_colour_gradient(low = "gray90", high = "black") +
+  	stat_smooth(method=lm) +
+  	scale_x_log10() +
+  	scale_y_log10() +
+  	theme_classic() +
+  	# geom_vline(xintercept = 500) +
+  	geom_hline(yintercept = 250) +
+  	facet_wrap(~orig.ident) +
+  theme_bw()
+ggsave('QC/Filtered/nCount_RNAvnFeature_RNA.png', height = 6, width = 6, dpi = 'print')
+
+metadata %>% 
+  	ggplot(aes(color=orig.ident, x=percent.mt, fill=orig.ident)) + 
+  	geom_density(alpha = 0.2) + 
+  	# scale_x_log10() +
+  	theme_classic() +
+  	geom_vline(xintercept = 10) +
+  theme_bw()
+ggsave('QC/Filtered/percent_mt.png', height = 6, width = 6, dpi = 'print')
+
+metadata %>%
+  	ggplot(aes(x=log10GenesPerUMI, color = orig.ident, fill=orig.ident)) +
+  	geom_density(alpha = 0.2) +
+  	theme_classic() +
+  	geom_vline(xintercept = 0.8) +
+  theme_bw()
+ggsave('QC/Filtered/log10GenesPerUMIvDensity.png', height = 6, width = 6, dpi = 'print')
+
+metadata %>%
+  ggplot(aes(x=log10GenesPerUMI, y=nFeature_RNA, color = log10(nCount_RNA))) +
+  geom_point() + 
+  facet_wrap(~orig.ident) +
+  theme_bw()
+ggsave('QC/Filtered/log10GenesPerUMIvnFeature_RNA.png', height = 6, width = 6, dpi = 'print')
+```
+
+Additional cell filters:
+
+-   nUMI \>= 100
+
+-   nGenes \>= 100 & nGenes \<=9000
+
+-   log10GenesPerUMI \>= 0.8
+
+-   percent.mt \< 25
+
+Gene filters:
+
+-   Removed a gene only if it is not expressed in at least 10 cells
+
+## Filter Seurat object
+
+### Cell-level
+
+```{r cell-filt, eval = F}
+merged.obj$log10GenesPerUMI = log10(merged.obj$nFeature_RNA) / log10(merged.obj$nCount_RNA)
+
+filtered_seurat = subset(x = merged.obj,
+                         subset = 
+                           (nCount_RNA >= 500) & 
+                           (nFeature_RNA >= 200) & 
+                           (nFeature_RNA <= 9000) &
+                           (log10GenesPerUMI >= 0.8) & 
+                           (percent.mt < 10))
+filtered_seurat
+
+save(filtered_seurat, file = "RObjects/scRNA_SeuratObj_Merged_Sundar10X_CellFiltered.RData")
+```
+
+### Gene-level
+
+```{r gene-filt, eval = F}
+load(file = "RObjects/scRNA_SeuratObj_Merged_Sundar10X_CellFiltered.RData")
+# When creating a merged object, Seurat stores each sample as a layer
+# Here we are joining those layers so it creates only one count matrix
+# This is so we can filter genes
+filtered_seurat[["RNA"]] = JoinLayers(filtered_seurat[["RNA"]])
+filtered_seurat
+
+counts = GetAssayData(object = filtered_seurat, assay = "RNA", layer = "counts")
+keep_genes = Matrix::rowSums(counts) >= 10
+filtered_counts = counts[keep_genes,]
+dim(filtered_counts)
+
+filtered_seurat = CreateSeuratObject(filtered_counts, meta.data = filtered_seurat@meta.data)
+filtered_seurat
+
+# Need to re-split layers for use in integration
+filtered_seurat[["RNA"]] = split(filtered_seurat[["RNA"]], f = filtered_seurat$orig.ident)
+filtered_seurat
+
+save(filtered_seurat, file = "RObjects/scRNA_SeuratObj_Merged_Sundar10X_CellGeneFiltered.RData")
+```
+
+# Integration
+
+There are many ways to integrate. Usually, log-normalization is sufficient.
+
+## Log-normalization
+
+```{r int-lognormal, eval = F}
+load("RObjects/scRNA_SeuratObj_Merged_Sundar10X_CellGeneFiltered.RData")
+seu.list = SplitObject(filtered_seurat, split.by = "orig.ident")
+# run standard anlaysis workflow
+seu.list = lapply(X = seu.list, FUN = function(x){
+  x = NormalizeData(x)
+  x = FindVariableFeatures(x, nfeatures = 5000)
+})
+
+features = SelectIntegrationFeatures(object.list = seu.list, nfeatures = 5000)
+
+seu.list = lapply(X = seu.list, FUN = function(x){
+  x = ScaleData(x, features = features)
+  x = RunPCA(x, features = features)
+})
+
+save(seu.list, file = "Output/scRNA_SeuratObj_List_CellGeneFiltered_LogNorm.RData")
+
+
+anchors = FindIntegrationAnchors(object.list = seu.list, anchor.features = features, reduction = "rpca")
+int.obj = IntegrateData(anchorset = anchors, normalization.method = "LogNormalize")
+save(int.obj, file = "Output/scRNA_Sundar10X_SeuratObj_LogNorm_RPCAIntegrated_v4.RData")
+
+
+# specify that we will perform downstream analysis on the corrected data note that the
+# original unmodified data still resides in the 'RNA' assay
+DefaultAssay(int.obj) = "integrated"
+
+# Run the standard workflow for visualization and clustering
+int.obj = ScaleData(int.obj, verbose = FALSE)
+int.obj = RunPCA(int.obj, npcs = 30, verbose = FALSE)
+int.obj = RunUMAP(int.obj, reduction = "pca", dims = 1:30)
+int.obj = FindNeighbors(int.obj, reduction = "pca", dims = 1:30)
+int.obj = FindClusters(int.obj, resolution = 1, cluster.name = "rpca_clusters_res1.0")
+int.obj
+save(int.obj, file = "Output/scRNA_Sundar10X_SeuratObj_LogNorm_RPCAIntegrated_Clustered.RData")
+```
+
+## SCTransform
+
+"SCTransform is a package that performs normalization and variance stabilization of single-cell RNA-seq (scRNA-seq) datasets. It's considered superior to log normalization for scRNA-seq data because it can remove technical biases while preserving biological heterogeneity. SCTransform does this by using Pearson residuals from regularized negative binomial regression and cellular sequencing depth as a covariate. This method models UMI counts to remove variation due to sequencing depth and adjusts variance based on pooling information across genes with similar abundances."
+
+```{r int-SCT, eval = FALSE}
+load("RObjects/scRNA_SeuratObj_Merged_Sundar071524_CellGeneFiltered.RData")
+seu.list = SplitObject(filtered_seurat, split.by = "orig.ident")
+
+features = SelectIntegrationFeatures(object.list = seu.list, nfeatures = 5000)
+
+seu.list = lapply(X = seu.list, FUN = function(x){
+  x = SCTransform(x, verbose = FALSE)
+  x = RunPCA(x, features = features)
+})
+
+save(seu.list, file = "Output/scRNA_SeuratObj_List_CellGeneFiltered_SCT.RData") 
+
+seu.list = PrepSCTIntegration(object.list = seu.list, anchor.features = features) # https://satijalab.org/seurat/reference/prepsctintegration
+
+anchors = FindIntegrationAnchors(object.list = seu.list, anchor.features = features, reduction = "rpca")
+int.obj = IntegrateData(anchorset = anchors, normalization.method = "SCT")
+save(int.obj, file = "Output/scRNA_Sundar071524_SeuratObj_SCT_RPCAIntegrated_v4.RData")
+
+# specify that we will perform downstream analysis on the corrected data note that the
+# original unmodified data still resides in the 'RNA' assay
+DefaultAssay(int.obj) = "integrated"
+
+# Run the standard workflow for visualization and clustering
+int.obj = RunPCA(int.obj, npcs = 30, verbose = FALSE)
+int.obj = RunUMAP(int.obj, reduction = "pca", dims = 1:30)
+int.obj = FindNeighbors(int.obj, reduction = "pca", dims = 1:30)
+int.obj = FindClusters(int.obj, resolution = 1, cluster.name = "rpca_clusters_res1.0")
+int.obj
+save(int.obj, file = "Output/scRNA_Sundar071524_SeuratObj_SCT_RPCAIntegrated_Clustered.RData")
+```
+
+## Visualize integration
+
+Next, we will visualize via UMAP the orig.ident and clusters. We can also look at expression of particular features with the FeaturePlot function.
+
 ```{r}
-doublets <- read.table("scrublet_calls.tsv",header = F,row.names = 1)
-colnames(doublets) <- c("Doublet_score","Is_doublet")
-srt <- AddMetaData(srt,doublets)
-head(srt[[]])
+png(file = "Output/scRNA_Sundar10X_LogNorm_IntegratedRPCA_OrigIdent_PC30.png", width = 800, height = 800)
+DimPlot(int.obj, reduction = "umap", group.by = "orig.ident")  + ggtitle("Samples") + 
+theme(axis.text.x=element_blank(), 
+      axis.ticks.x=element_blank(), 
+      axis.text.y=element_blank(), 
+      axis.ticks.y=element_blank()) +
+  xlab("UMAP1") + ylab("UMAP2")
+dev.off()
+
+png(file = "Output/scRNA_Sundar10X_LogNorm_IntegratedRPCA_Clusters_PC30.png", width = 800, height = 800)
+d = DimPlot(int.obj, reduction = "umap", group.by = "rpca_clusters_res1.0")
+LabelClusters(d, id = "rpca_clusters_res1.0",  fontface = "bold") + ggtitle("RPCA Clustered") + 
+theme(axis.text.x=element_blank(), 
+      axis.ticks.x=element_blank(), 
+      axis.text.y=element_blank(), 
+      axis.ticks.y=element_blank()) +
+  xlab("UMAP1") + ylab("UMAP2")
+dev.off()
+
+png(file = "Output/scRNA_Sundar10X_LogNorm_IntegratedRPCA_OrigIdent_PC30-clusters.png", width = 3000, height = 800)
+DimPlot(int.obj, reduction = "umap", split.by = "orig.ident", group.by = "rpca_clusters_res1.0")  + ggtitle("Samples by RPCA cluster") + 
+theme(axis.text.x=element_blank(), 
+      axis.ticks.x=element_blank(), 
+      axis.text.y=element_blank(), 
+      axis.ticks.y=element_blank()) +
+  xlab("UMAP1") + ylab("UMAP2")
+dev.off()
+
+FeaturePlot(int.obj, features = c('Foxj1', 'Aplnr',
+                                  'Gpihbp1','Ptprb'))
+```
+
+# Differential expression analysis between treatment groups within cell types
+
+## Prior to filtering to DE only
+
+To run differential expression, we are going to ensure our metadata has a group variable. Then we will create a unique column that combines group and cell type.
+
+The looping function creates individual CSV files with all genes tested prior to filtering.
+
+```{r create-individual-marker-csv}
+load("Output/scRNA_Sundar071524_SeuratObj_LogNorm_RPCAIntegrated_Clustered_Predictions.RData")
+
+DefaultAssay(int.obj) = "RNA"
+
+int.obj = JoinLayers(int.obj)
+
+# create relevant labels
+int.obj$group = ifelse(grepl('NM', int.obj$orig.ident), 'trt', 'cntrl')
+
+cells = unique(int.obj$predicted.celltype_level3)
+
+
+int.obj$celltype.stim = paste(int.obj$predicted.celltype_level3, int.obj$group, sep = "_")
+
+Idents(int.obj) = "celltype.stim" # set to correct identity for DE compare
+
+# create looping function for DE analysis based on cell type
+for (cell in cells) {
+  
+  # ensure that both groups are represented (what is this about)
+  if (paste0(cell, '_cntrl') %in% int.obj$celltype.stim & paste0(cell, '_trt') %in% int.obj$celltype.stim)
+    
+    res = FindMarkers(int.obj, ident.1 = paste0(cell, '_trt'), ident.2 = paste0(cell, '_cntrl'))
+  
+    res = res %>%
+      arrange(desc(avg_log2FC))
+    
+    fp = paste0('Output/DE/individual/', gsub('/', '-', cell), '_DE.csv')
+  
+  write.csv(res, file = fp)
+}
+```
+
+## Filter to DE and create one CSV file
+
+TO make it more conducive to looking through for researchers, we can filter based on what we consider DE and then make one CSV file.
+
+Some information regarding filters:
+
+-   P-value is filtered to \< 0.05
+-   Log2FC must be greater than 1.5
+-   Difference between pct.1 and pct.2 must be greater than 0.3
+
+pct.1 is the percentage of cells in the cluster where the gene is detected\
+pct.2 is the percentage of cells on average in all the other clusters where the gene is detected
+
+```{r create-DE-csv}
+files = list.files('Output/DE/individual/', full.names = TRUE)
+
+full_csv = data.frame()
+
+for (file in files) {
+  f = read.csv(file, row.names = 1)
+  
+  f = f  %>%
+    filter(p_val < 0.05 & abs(avg_log2FC) > 1.5 & abs(pct.1 - pct.2) > 0.3)
+  
+  f$cell = rep(sapply(strsplit(sapply(strsplit(file,"/"),"[",4),"_"), "[", 1), nrow(f))
+  
+  full_csv = rbind(full_csv, f)
+}
+
+write.csv(full_csv, 'Output/DE/DE_all.csv')
 ```
 
 
-## Visualizations from metadata
-```{r}
-VlnPlot(srt, features = c("nFeature_RNA","nCount_RNA","percent.mt","percent.rb"),ncol = 4,pt.size = 0.1) & 
-  theme(plot.title = element_text(size=10))
+# Visualize difference in cell expression based on grouping variable
+
+```{r visualize-cell-props}
+load("Output/scRNA_Sundar071524_SeuratObj_LogNorm_RPCAIntegrated_Clustered_Predictions.RData")
+
+options(scipen=999)
+
+metadata = int.obj@meta.data
+
+metadata %>%
+  ggplot(aes(predicted.celltype_level3, nCount_RNA, fill = group)) +
+    geom_col(position = 'fill') +
+    xlab('Cell type') + ylab('Proportion of cells') +
+    guides(x =  guide_axis(angle = 45)) +
+    scale_fill_manual(values = c('#FFC20A', '#0C7BDC'), 
+                      name = 'Treatment', labels = c('PBS Control', 'NM Treated')) +
+    ggtitle('Proportion of cells by treatment') + theme_classic() +
+  theme(axis.text.x = element_text(face = 'bold'),
+        axis.text.y = element_text(face = 'bold'),
+        axis.title.x = element_text(face = 'bold'),
+        axis.title.y = element_text(face = 'bold'),
+        plot.title = element_text(size = 15, face = 'bold', hjust = 0.5))
+ggsave('Output/PropCells-Treatment.png', height = 6, width = 16, dpi = 'print')
 ```
-
-
-```{r}
-FeatureScatter(srt, feature1 = "nCount_RNA", feature2 = "percent.mt")
-```
-
-
-```{r}
-FeatureScatter(srt, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
-```
-
-
-```{r}
-FeatureScatter(srt, feature1 = "nCount_RNA", feature2 = "percent.rb")
-```
-
-
-```{r}
-FeatureScatter(srt, feature1 = "percent.rb", feature2 = "percent.mt")
-```
-
-
-```{r}
-FeatureScatter(srt, feature1 = "nFeature_RNA", feature2 = "Doublet_score")
-```
-
-
-## Create QC column in metadata
-```{r}
-srt[['QC']] <- ifelse(srt@meta.data$Is_doublet == 'True','Doublet','Pass')
-srt[['QC']] <- ifelse(srt@meta.data$nFeature_RNA < 500 & srt@meta.data$QC == 'Pass','Low_nFeature',srt@meta.data$QC)
-srt[['QC']] <- ifelse(srt@meta.data$nFeature_RNA < 500 & srt@meta.data$QC != 'Pass' & srt@meta.data$QC != 'Low_nFeature',paste('Low_nFeature',srt@meta.data$QC,sep = ','),srt@meta.data$QC)
-srt[['QC']] <- ifelse(srt@meta.data$percent.mt > 15 & srt@meta.data$QC == 'Pass','High_MT',srt@meta.data$QC)
-srt[['QC']] <- ifelse(srt@meta.data$nFeature_RNA < 500 & srt@meta.data$QC != 'Pass' & srt@meta.data$QC != 'High_MT',paste('High_MT',srt@meta.data$QC,sep = ','),srt@meta.data$QC)
-table(srt[['QC']])
-```
-
-## Violin plot for those that passed QC
-```{r}
-VlnPlot(subset(srt, subset = QC == 'Pass'), 
-        features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4, pt.size = 0.1) & 
-  theme(plot.title = element_text(size=10))
-```
-
-# Normalize & dimension reduction
-
-Normalize based on sequencing depth. Scaled by 10,000 and log-transform values.
-```{r}
-srt <- NormalizeData(srt)
-```
-
-Find most variable genes for downstream analysis.
-```{r}
-srt <- FindVariableFeatures(srt, selection.method = "vst", nfeatures = 2000)
-```
-
-Show top ten most variable
-```{r}
-top10 <- head(VariableFeatures(srt), 10)
-top10
-```
-
-Plot variable features with top ten labeled
-```{r}
-plot1 <- VariableFeaturePlot(srt)
-LabelPoints(plot = plot1, points = top10, repel = TRUE, xnudge = 0, ynudge = 0)
-```
-
-We can use the ScaleData function to convert the normalized gene expression from above into Z-scores to input into PCA
-```{r}
-all.genes <- rownames(srt)
-srt <- ScaleData(srt, features = all.genes) # forces to do all genes, not only top variable genes
-```
-
-Run PCA
-```{r}
-srt <- RunPCA(srt, features = VariableFeatures(object = srt))
-```
-
-Check heatmaps of principal components
-```{r}
-DimHeatmap(srt, dims = 1:6, nfeatures = 20, cells = 500, balanced = T)
-```
-
-Visualize dimension reduction and check elbow plot
-```{r}
-DimPlot(srat, reduction = "pca")
-ElbowPlot(srat)
-```
-
-Find neighbors for cluster resolution in plot
-```{r}
-srat <- FindNeighbors(srat, dims = 1:10) # set dims by ElbowPlot
-```
-
-Find clusters, usually 0.8
-```{r}
-srat <- FindClusters(srat, resolution = 0.5)
-```
-
-Create and plot UMAP
-```{r}
-srat <- RunUMAP(srat, dims = 1:10, verbose = F)
-DimPlot(srat,label.size = 4,repel = T,label = T)
-FeaturePlot(srat, features = c("LILRA4", "TPM2", "PPBP", "GP1BB")) # DC(1:2), platelets(3:4)
-```
-
-Compare to UMAP without those that did not pass QC
-```{r}
-DimPlot(srat,label.size = 4,repel = T,label = T)
-```
-
-Calculate cell cycle scores
-```{r}
-s.genes <- cc.genes.updated.2019$s.genes
-g2m.genes <- cc.genes.updated.2019$g2m.genes
-
-srat <- CellCycleScoring(srat, s.features = s.genes, g2m.features = g2m.genes)
-table(srat[[]]$Phase)
-```
-
-Mitochondrial UMAP
-```{r}
-FeaturePlot(srat,features = "percent.mt",label.size = 4,repel = T,label = T) & 
-  theme(plot.title = element_text(size=10))
-```
-
-Ribosomal protein UMAP
-```{r}
-FeaturePlot(srat,features = "percent.rb",label.size = 4,repel = T,label = T) & theme(plot.title = element_text(size=10))
-```
-
-Cell cycle score UMAP
-```{r}
-FeaturePlot(srat,features = c("S.Score","G2M.Score"),label.size = 4,repel = T,label = T) & 
-  theme(plot.title = element_text(size=10))
-```
-
-## 
-
