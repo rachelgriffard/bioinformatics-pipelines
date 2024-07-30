@@ -5,6 +5,19 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
+```{css, echo=FALSE}
+/* scrollable code */
+.scroll-100 {
+  max-height: 150px;
+  overflow-y: auto;
+  background-color: inherit;
+}
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
