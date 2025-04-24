@@ -1,0 +1,10 @@
+for file in "path/to/files"/*; do
+  # Extract the base name of the file
+  base_name=$(basename "$file")
+  
+  # Extract the first part of the file name preceding the _
+  first_part=$(echo "$base_name" | cut -d'_' -f1)
+  
+  # Print the result
+  echo "$first_part"
+done
