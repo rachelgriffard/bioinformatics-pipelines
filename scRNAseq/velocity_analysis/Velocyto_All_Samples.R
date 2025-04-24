@@ -23,8 +23,8 @@ sample.ids <- c("HDM673_WT", "HDM671_Mut")
 
 
 for (sample.id in sample.ids){
-  velo = paste0("velocyto run10x --samtools-threads 8 /kuhpc/work/biostat/r816g589/collaborations/sundar/20240712-sundar-scRNAseq/multi_output/outs/per_sample_outs/", sample.id, 
-                "/count /kuhpc/work/biostat/e617n596/References/cellranger/refdata-gex-GRCh38-2020-A/genes/genes.gtf")
+  velo = paste0("velocyto run10x --samtools-threads 8 /path/to/sample/", sample.id, 
+                "/count path/to/reference/genes/genes.gtf")
 
   print(velo)
   system(velo)

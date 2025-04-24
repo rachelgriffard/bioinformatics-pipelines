@@ -1,6 +1,6 @@
 ---
 title: "Seurat scRNAseq analysis"
-author: "Rachel Griffard"
+author: "Rachel Griffard-Smith"
 date: "`r Sys.Date()`"
 output: html_document
 ---
@@ -80,7 +80,7 @@ for (i in 1:length(samples)){
 
 
 # save list of samples as Seurat objects
-save(seurat.list, file = "Robjects/scRNA_SeuratObj_List_Sundar10X.RData") # saving list of seurat objects
+save(seurat.list, file = "Robjects/scRNA_SeuratObj_List_collab10X.RData") # saving list of seurat objects
 ```
 
 ## Create Seurat object
@@ -107,7 +107,7 @@ Before filtering, it is important to look at these following plots to determine 
 ## QC plots pre-filtering
 
 ```{r metrics}
-load("RObjects/scRNA_SeuratObj_Merged_Sundar10X_Metadata.RData")
+load("RObjects/scRNA_SeuratObj_Merged_collab10X_Metadata.RData")
 
 metadata$log10GenesPerUMI = log10(metadata$nFeature_RNA) / log10(metadata$nCount_RNA)
 
@@ -353,13 +353,13 @@ filtered_seurat = subset(x = merged.obj,
                            (percent.mt < 10))
 filtered_seurat
 
-save(filtered_seurat, file = "RObjects/scRNA_SeuratObj_Merged_Sundar10X_CellFiltered.RData")
+save(filtered_seurat, file = "RObjects/scRNA_SeuratObj_Merged_collab10X_CellFiltered.RData")
 ```
 
 ### Gene-level
 
 ```{r gene-filt, eval = F}
-load(file = "RObjects/scRNA_SeuratObj_Merged_Sundar10X_CellFiltered.RData")
+load(file = "RObjects/scRNA_SeuratObj_Merged_collab10X_CellFiltered.RData")
 # When creating a merged object, Seurat stores each sample as a layer
 # Here we are joining those layers so it creates only one count matrix
 # This is so we can filter genes
@@ -378,7 +378,7 @@ filtered_seurat
 filtered_seurat[["RNA"]] = split(filtered_seurat[["RNA"]], f = filtered_seurat$orig.ident)
 filtered_seurat
 
-save(filtered_seurat, file = "RObjects/scRNA_SeuratObj_Merged_Sundar10X_CellGeneFiltered.RData")
+save(filtered_seurat, file = "RObjects/scRNA_SeuratObj_Merged_collab10X_CellGeneFiltered.RData")
 ```
 
 # Integration
@@ -388,7 +388,7 @@ There are many ways to integrate. Usually, log-normalization is sufficient.
 ## Log-normalization
 
 ```{r int-lognormal, eval = F}
-load("RObjects/scRNA_SeuratObj_Merged_Sundar10X_CellGeneFiltered.RData")
+load("RObjects/scRNA_SeuratObj_Merged_collab10X_CellGeneFiltered.RData")
 seu.list = SplitObject(filtered_seurat, split.by = "orig.ident")
 # run standard anlaysis workflow
 seu.list = lapply(X = seu.list, FUN = function(x){
@@ -408,7 +408,7 @@ save(seu.list, file = "Output/scRNA_SeuratObj_List_CellGeneFiltered_LogNorm.RDat
 
 anchors = FindIntegrationAnchors(object.list = seu.list, anchor.features = features, reduction = "rpca")
 int.obj = IntegrateData(anchorset = anchors, normalization.method = "LogNormalize")
-save(int.obj, file = "Output/scRNA_Sundar10X_SeuratObj_LogNorm_RPCAIntegrated_v4.RData")
+save(int.obj, file = "Output/scRNA_collab10X_SeuratObj_LogNorm_RPCAIntegrated_v4.RData")
 
 
 # specify that we will perform downstream analysis on the corrected data note that the
@@ -422,7 +422,7 @@ int.obj = RunUMAP(int.obj, reduction = "pca", dims = 1:30)
 int.obj = FindNeighbors(int.obj, reduction = "pca", dims = 1:30)
 int.obj = FindClusters(int.obj, resolution = 1, cluster.name = "rpca_clusters_res1.0")
 int.obj
-save(int.obj, file = "Output/scRNA_Sundar10X_SeuratObj_LogNorm_RPCAIntegrated_Clustered.RData")
+save(int.obj, file = "Output/scRNA_collab10X_SeuratObj_LogNorm_RPCAIntegrated_Clustered.RData")
 ```
 
 ## SCTransform
@@ -430,7 +430,7 @@ save(int.obj, file = "Output/scRNA_Sundar10X_SeuratObj_LogNorm_RPCAIntegrated_Cl
 "SCTransform is a package that performs normalization and variance stabilization of single-cell RNA-seq (scRNA-seq) datasets. It's considered superior to log normalization for scRNA-seq data because it can remove technical biases while preserving biological heterogeneity. SCTransform does this by using Pearson residuals from regularized negative binomial regression and cellular sequencing depth as a covariate. This method models UMI counts to remove variation due to sequencing depth and adjusts variance based on pooling information across genes with similar abundances."
 
 ```{r int-SCT, eval = FALSE}
-load("RObjects/scRNA_SeuratObj_Merged_Sundar071524_CellGeneFiltered.RData")
+load("RObjects/scRNA_SeuratObj_Merged_collab071524_CellGeneFiltered.RData")
 seu.list = SplitObject(filtered_seurat, split.by = "orig.ident")
 
 features = SelectIntegrationFeatures(object.list = seu.list, nfeatures = 5000)
@@ -446,7 +446,7 @@ seu.list = PrepSCTIntegration(object.list = seu.list, anchor.features = features
 
 anchors = FindIntegrationAnchors(object.list = seu.list, anchor.features = features, reduction = "rpca")
 int.obj = IntegrateData(anchorset = anchors, normalization.method = "SCT")
-save(int.obj, file = "Output/scRNA_Sundar071524_SeuratObj_SCT_RPCAIntegrated_v4.RData")
+save(int.obj, file = "Output/scRNA_collab071524_SeuratObj_SCT_RPCAIntegrated_v4.RData")
 
 # specify that we will perform downstream analysis on the corrected data note that the
 # original unmodified data still resides in the 'RNA' assay
@@ -458,7 +458,7 @@ int.obj = RunUMAP(int.obj, reduction = "pca", dims = 1:30)
 int.obj = FindNeighbors(int.obj, reduction = "pca", dims = 1:30)
 int.obj = FindClusters(int.obj, resolution = 1, cluster.name = "rpca_clusters_res1.0")
 int.obj
-save(int.obj, file = "Output/scRNA_Sundar071524_SeuratObj_SCT_RPCAIntegrated_Clustered.RData")
+save(int.obj, file = "Output/scRNA_collab071524_SeuratObj_SCT_RPCAIntegrated_Clustered.RData")
 ```
 
 ## Visualize integration
@@ -466,7 +466,7 @@ save(int.obj, file = "Output/scRNA_Sundar071524_SeuratObj_SCT_RPCAIntegrated_Clu
 Next, we will visualize via UMAP the orig.ident and clusters. We can also look at expression of particular features with the FeaturePlot function.
 
 ```{r}
-png(file = "Output/scRNA_Sundar10X_LogNorm_IntegratedRPCA_OrigIdent_PC30.png", width = 800, height = 800)
+png(file = "Output/scRNA_collab10X_LogNorm_IntegratedRPCA_OrigIdent_PC30.png", width = 800, height = 800)
 DimPlot(int.obj, reduction = "umap", group.by = "orig.ident")  + ggtitle("Samples") + 
 theme(axis.text.x=element_blank(), 
       axis.ticks.x=element_blank(), 
@@ -475,7 +475,7 @@ theme(axis.text.x=element_blank(),
   xlab("UMAP1") + ylab("UMAP2")
 dev.off()
 
-png(file = "Output/scRNA_Sundar10X_LogNorm_IntegratedRPCA_Clusters_PC30.png", width = 800, height = 800)
+png(file = "Output/scRNA_collab10X_LogNorm_IntegratedRPCA_Clusters_PC30.png", width = 800, height = 800)
 d = DimPlot(int.obj, reduction = "umap", group.by = "rpca_clusters_res1.0")
 LabelClusters(d, id = "rpca_clusters_res1.0",  fontface = "bold") + ggtitle("RPCA Clustered") + 
 theme(axis.text.x=element_blank(), 
@@ -485,7 +485,7 @@ theme(axis.text.x=element_blank(),
   xlab("UMAP1") + ylab("UMAP2")
 dev.off()
 
-png(file = "Output/scRNA_Sundar10X_LogNorm_IntegratedRPCA_OrigIdent_PC30-clusters.png", width = 3000, height = 800)
+png(file = "Output/scRNA_collab10X_LogNorm_IntegratedRPCA_OrigIdent_PC30-clusters.png", width = 3000, height = 800)
 DimPlot(int.obj, reduction = "umap", split.by = "orig.ident", group.by = "rpca_clusters_res1.0")  + ggtitle("Samples by RPCA cluster") + 
 theme(axis.text.x=element_blank(), 
       axis.ticks.x=element_blank(), 
@@ -507,7 +507,7 @@ To run differential expression, we are going to ensure our metadata has a group 
 The looping function creates individual CSV files with all genes tested prior to filtering.
 
 ```{r create-individual-marker-csv}
-load("Output/scRNA_Sundar071524_SeuratObj_LogNorm_RPCAIntegrated_Clustered_Predictions.RData")
+load("Output/scRNA_collab071524_SeuratObj_LogNorm_RPCAIntegrated_Clustered_Predictions.RData")
 
 DefaultAssay(int.obj) = "RNA"
 
@@ -576,7 +576,7 @@ write.csv(full_csv, 'Output/DE/DE_all.csv')
 # Visualize difference in cell expression based on grouping variable
 
 ```{r visualize-cell-props}
-load("Output/scRNA_Sundar071524_SeuratObj_LogNorm_RPCAIntegrated_Clustered_Predictions.RData")
+load("Output/scRNA_collab071524_SeuratObj_LogNorm_RPCAIntegrated_Clustered_Predictions.RData")
 
 options(scipen=999)
 

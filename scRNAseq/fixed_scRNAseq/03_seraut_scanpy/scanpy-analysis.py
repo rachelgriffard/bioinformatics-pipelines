@@ -2,43 +2,41 @@
 """
 scanpy for scRNAseq analysis
 
-@author: r816g589
+@author: Rachel Griffard-Smith
 
-last update: 07122024
+last update: 042425
 
 ref: https://scanpy.readthedocs.io/en/stable/tutorials/basics/clustering.html
 """
 
-### Import libraries
 import scanpy as sc
 import anndata as ad
+# import plotnine as pn
+import scanpy.external as sce
+import pandas as pd
+# import bbknn
 
-### Data retrieval
-import pooch
 
 # set plot settings
 sc.settings.set_figure_params(dpi=50, facecolor="white")
 
 ### Read in data
 # read in the count matrix to an AnnData object
-EXAMPLE_DATA = pooch.create(
-    path=pooch.os_cache("scverse_tutorials"),
-    base_url="doi:10.6084/m9.figshare.22716739.v1/",
-)
-EXAMPLE_DATA.load_registry_from_doi()
-
+# samples = open('../samples.txt').read().splitlines()
 
 samples = {
-    "s1d1": "s1d1_filtered_feature_bc_matrix.h5",
-    "s1d3": "s1d3_filtered_feature_bc_matrix.h5",
+    "S1":"..path/to/sample/S1/count/sample_filtered_feature_bc_matrix.h5",
+    "S2":"..path/to/sample/S2/count/sample_filtered_feature_bc_matrix.h5",
+    "S3":"..path/to/sample/S3/count/sample_filtered_feature_bc_matrix.h5",
+    "S4":"..path/to/sample/S4/count/sample_filtered_feature_bc_matrix.h5",
 }
+
 adatas = {}
 
-for sample_id, filename in samples.items():
-    path = EXAMPLE_DATA.fetch(filename)
-    sample_adata = sc.read_10x_h5(path)
+for sample,filename in samples.items():
+    sample_adata = sc.read_10x_h5(filename)
     sample_adata.var_names_make_unique()
-    adatas[sample_id] = sample_adata
+    adatas[sample] = sample_adata
 
 adata = ad.concat(adatas, label="sample")
 adata.obs_names_make_unique()
@@ -47,11 +45,11 @@ adata
 
 ### Quality control (**done separately for each sample)
 # mitochondrial genes, "MT-" for human, "Mt-" for mouse
-adata.var["mt"] = adata.var_names.str.startswith("MT-")
+adata.var["mt"] = adata.var_names.str.startswith("mt-")
 # ribosomal genes
-adata.var["ribo"] = adata.var_names.str.startswith(("RPS", "RPL"))
+adata.var["ribo"] = adata.var_names.str.startswith(("Rps", "Rpl"))
 # hemoglobin genes
-adata.var["hb"] = adata.var_names.str.contains("^HB[^(P)]")
+adata.var["hb"] = adata.var_names.str.contains("^Hb[^(P)]")
 
 # calculate qc
 sc.pp.calculate_qc_metrics(
@@ -66,13 +64,14 @@ sc.pl.violin(
     multi_panel=True,
 )
 
+sc.pl.scatter(adata, "total_counts", "n_genes_by_counts")
+
 # filter low quality
 sc.pp.filter_cells(adata, min_genes=100)
 sc.pp.filter_genes(adata, min_cells=3)
 
-### Doublet detection
+### Doublet detection - although perhaps not necessary, set upper range on filtering quality
 sc.pp.scrublet(adata, batch_key="sample")
-
 
 ### Normalization
 # Saving count data
@@ -87,6 +86,9 @@ sc.pp.log1p(adata)
 ### Feature selection
 sc.pp.highly_variable_genes(adata, n_top_genes=2000, batch_key="sample")
 sc.pl.highly_variable_genes(adata)
+
+var_select = adata.var.highly_variable_nbatches > 1
+var_genes = var_select.index[var_select]
 
 ### Dimension reduction
 # pca
@@ -135,50 +137,67 @@ sc.pl.umap(
     ncols=2,
 )
 
-### Marker gene set
-marker_genes = {
-    "CD14+ Mono": ["FCN1", "CD14"],
-    "CD16+ Mono": ["TCF7L2", "FCGR3A", "LYN"],
-    # Note: DMXL2 should be negative
-    "cDC2": ["CST3", "COTL1", "LYZ", "DMXL2", "CLEC10A", "FCER1A"],
-    "Erythroblast": ["MKI67", "HBA1", "HBB"],
-    # Note HBM and GYPA are negative markers
-    "Proerythroblast": ["CDK6", "SYNGR1", "HBM", "GYPA"],
-    "NK": ["GNLY", "NKG7", "CD247", "FCER1G", "TYROBP", "KLRG1", "FCGR3A"],
-    "ILC": ["ID2", "PLCG2", "GNLY", "SYNE1"],
-    "Naive CD20+ B": ["MS4A1", "IL4R", "IGHD", "FCRL1", "IGHM"],
-    # Note IGHD and IGHM are negative markers
-    "B cells": [
-        "MS4A1",
-        "ITGB1",
-        "COL4A4",
-        "PRDM1",
-        "IRF4",
-        "PAX5",
-        "BCL11A",
-        "BLK",
-        "IGHD",
-        "IGHM",
-    ],
-    "Plasma cells": ["MZB1", "HSP90B1", "FNDC3B", "PRDM1", "IGKC", "JCHAIN"],
-    # Note PAX5 is a negative marker
-    "Plasmablast": ["XBP1", "PRDM1", "PAX5"],
-    "CD4+ T": ["CD4", "IL7R", "TRBC2"],
-    "CD8+ T": ["CD8A", "CD8B", "GZMK", "GZMA", "CCL5", "GZMB", "GZMH", "GZMA"],
-    "T naive": ["LEF1", "CCR7", "TCF7"],
-    "pDC": ["GZMB", "IL3RA", "COBLL1", "TCF4"],
-}
+### Integration
+alldata = {}
+for sample in samples:
+    alldata[sample] = adata[adata.obs['sample'] == sample,]
+alldata
 
-sc.pl.dotplot(adata, marker_genes, groupby="leiden_res_0.02", standard_scale="var")
+sce.pp.harmony_integrate(adata, 'sample')
+'X_pca_harmony' in adata.obsm
 
-
-adata.obs["cell_type_lvl1"] = adata.obs["leiden_res_0.02"].map(
-    {
-        "0": "Lymphocytes",
-        "1": "Monocytes",
-        "2": "Erythroid",
-        "3": "B Cells",
-    }
+sc.pp.neighbors(adata, use_rep='X_pca_harmony')
+sc.tl.umap(adata)
+sc.pl.umap(
+    adata,
+    color="sample",
+    # Setting a smaller point size to get prevent overlap
+    size=2
 )
 
-sc.pl.dotplot(adata, marker_genes, groupby="leiden_res_0.50", standard_scale="var")
+sc.pl.umap(
+    adata,
+    color="pct_counts_mt",
+    # Setting a smaller point size to get prevent overlap
+    size=2
+)
+
+sc.pl.umap(
+    adata,
+    color="leiden",
+    # Setting a smaller point size to get prevent overlap
+    size=2
+)
+
+"""
+## BBKNN integration
+sce.pp.bbknn(adata, batch_key="sample")  # running bbknn 1.3.6
+sc.tl.umap(adata)
+sc.pl.umap(adata, color=["sample", "louvain"])
+
+# SCVI
+# tell scvi where to get the data
+scvi.data.setup_anndata(adata, layer="counts", batch_key = 'sample')
+scvi.data.view_anndata_setup(adata)
+"""
+"""
+import csv
+
+with open('../markergenes/azimuth_pred.csv', newline='') as f:
+    reader = csv.reader(f)
+    pred = list(reader)
+"""
+pred = pd.read_csv('../markergenes/azimuth_pred.csv')
+
+adata.obs["barcode"] = adata.obs['sample'].astype(str) + '_' + adata.obs_names
+
+ad_ob = pd.DataFrame(adata.obs)
+
+adata.obs = pd.merge(adata.obs, pred, on = 'barcode', how = 'left')
+
+sc.pl.umap(
+    adata,
+    color="predicted.celltype_level3",
+    # Setting a smaller point size to get prevent overlap
+    size=2
+)
