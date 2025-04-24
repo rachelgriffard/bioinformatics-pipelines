@@ -1,0 +1,20 @@
+#!/bin/bash
+#SBATCH --job-name=fastq-gz     # Job name
+#SBATCH --partition=biostat           # Partition Name (Required)
+#SBATCH --mail-type=BEGIN,END,FAIL          # Mail events (NONE, BEGIN, END, FAIL, ALL)
+#SBATCH --mail-user=rgriffard@kumc.edu     # Where to send mail	
+#SBATCH --ntasks=64                   # Run on a single CPU
+#SBATCH --mem=64gb                    # Job memory request
+#SBATCH --time=1-0:00:00             # Time limit days-hrs:min:sec
+#SBATCH --output=gz_%j.log          # Standard output and error log 
+
+pwd; hostname; date
+ 
+for sample in $(ls *.fastq); \
+do \
+	base=$(basename ${sample} .fastq)
+	echo $base
+	gzip -c ${sample} > ${base}.fastq.gz
+done;
+
+date

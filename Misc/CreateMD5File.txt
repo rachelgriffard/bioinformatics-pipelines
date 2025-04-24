@@ -1,0 +1,52 @@
+$filePath = "ATAC" # Replace with your tar file's name
+$md5 = Get-FileHash -Path $filePath -Algorithm MD5 | Select-Object -ExpandProperty Hash
+$output = "$md5 $($filePath)"
+$output | Out-File -FilePath "$($filePath).md5"
+
+
+# for multiple files in folder
+$folderPath = "ATAC-seq"
+$outputFilePath = "$folderPath.md5"
+
+# Check if the folder exists
+if (-not (Test-Path -Path $folderPath -PathType Container)) {
+    Write-Error "Folder '$folderPath' not found."
+    return
+}
+
+# Get all files in the folder (including subfolders if needed)
+$files = Get-ChildItem -Path $folderPath -File -Recurse
+
+# Create an array to store the MD5 hash and file path
+$md5Hashes = @()
+
+# Loop through each file and calculate its MD5 hash
+foreach ($file in $files) {
+    try {
+        $md5 = Get-FileHash -Path $file.FullName -Algorithm MD5 | Select-Object -ExpandProperty Hash
+        $md5Hashes += "$md5 $($file.FullName)"
+    } catch {
+        Write-Warning "Error processing file: $($file.FullName) - $($_.Exception.Message)"
+    }
+}
+
+# Output the MD5 hashes to a file
+$md5Hashes | Out-File -FilePath $outputFilePath
+
+Write-Host "MD5 hashes written to '$outputFilePath'."
+
+
+# for within current working directory
+# Get the current working directory
+$currentDirectory = Get-Location
+
+# Get all files in the current working directory
+$files = Get-ChildItem -Path $currentDirectory -File
+
+# Loop through each file and generate the MD5 checksum
+foreach ($file in $files) {
+    $filePath = $file.FullName
+    $md5 = Get-FileHash -Path $filePath -Algorithm MD5 | Select-Object -ExpandProperty Hash
+    $output = "$md5 $($filePath)"
+    $output | Out-File -FilePath "$($filePath).md5"
+}
