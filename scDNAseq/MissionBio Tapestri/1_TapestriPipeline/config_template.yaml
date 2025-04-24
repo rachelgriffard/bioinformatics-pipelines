@@ -1,0 +1,23 @@
+genome:
+  path: /path/to/genome/file.fa
+  version: name_of_genome
+inputs:
+  dna:
+  - r1: concat/sample_L001_R1_001.fastq.gz
+    r2: concat/sample_L001_R2_001.fastq.gz
+  - r1: concat/sample_L002_R1_001.fastq.gz
+    r2: concat/sample_L002_R2_001.fastq.gz
+
+# adjusted portion
+cellfinder:
+    algorithm: CompletenessAlgorithm
+    parameters:
+min_amplicon_fraction_ge_coverage: 0.6 # adjusted from 0.8 default for completenessalgorithm
+
+output:
+  prefix: sample
+num_cores: 32
+panel:
+  dna:
+    path: panel
+    name: panel

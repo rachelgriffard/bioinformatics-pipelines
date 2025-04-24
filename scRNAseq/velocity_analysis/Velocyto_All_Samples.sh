@@ -2,7 +2,7 @@
 #SBATCH --job-name=velocyto      # Job name
 #SBATCH --partition=biostat           # Partition Name (Required)
 #SBATCH --mail-type=ALL       # Mail events (NONE, BEGIN, END, FAIL, ALL)
-#SBATCH --mail-user=r816g589@kumc.edu     # Where to send mail	
+#SBATCH --mail-user=    # Where to send mail	
 #SBATCH --ntasks=8                   # Run on a single CPU
 #SBATCH --nodes=1
 #SBATCH --mem=100gb                    # Job memory request
