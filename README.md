@@ -7,6 +7,16 @@ To run many of these scripts, users must have access to a high performance compu
 
 The user must update the bash script to the appropriate parameters for their unique HPC. These were built on an HPC using command line with SLURM.
 
+<h2 align = 'center'>🚀Current pipelines</h2>
+
+- 🧬 `Bulk RNAseq` - Basic pipeline for bulk RNA-sequencing experiments from preprocessing to downstream pathway analysis
+- 📦 `PackageBuilding` - Helper scripts for building an R package
+- 📊 `Visualizations` - Basic visualization scripts for common plots such as volcano plots
+- 🎯 `miRNA` - Scripts for analysis of miRNA
+- 🧬 `scDNAseq/MissionBio Tapestri` - Analysis cripts for MissionBio Tapestri platform data using the `optima` package and hardcoding analysis
+- 🔍 `scRNAseq` - Basic analysis for scRNAseq from 10X platforms
+- 🧭 `spatial RNAseq/VisiumHD` - Scripts from analyses of Visium HD samples for preprocessing, quality control, integration using `scVI`, nucleus segmentation using `stardist`, differential expression analysis between cell types, cell type identification using RCTD in `spacexr`, and more
+
 ---
 
 <h2 align = 'center'>🗓️ Last Updated</h2>
