@@ -1,4 +1,12 @@
 <h1 align = 'center'>🧬Rachel's <code>Bioinformatics Pipelines</code></h1>
+
+<p align="center">
+  <img alt="Last Commit" src="https://img.shields.io/github/last-commit/rachelgriffard/bioinformatics-pipelines">
+  <img alt="License" src="https://img.shields.io/github/license/rachelgriffard/bioinformatics-pipelines">
+  <img alt="Top Language" src="https://img.shields.io/github/languages/top/rachelgriffard/bioinformatics-pipelines">
+  <img alt="Contributors" src="https://img.shields.io/github/contributors/rachelgriffard/bioinformatics-pipelines">
+</p>
+
 <h2 align = 'center'>⚠️A word of warning...</h2>
 This repository contains 'omics data-type based pipelines from my general role as a bioinformatician. These are not cleaned, nor are they transportable. However, I figured they are worth allowing others to use if they want!
 
@@ -22,8 +30,8 @@ This repository contains 'omics data-type based pipelines from my general role a
 
 ---
 
-<h2 align = 'center'>🗓️ Last Updated</h2>
+<h2 align = 'center'>🗓️ Last Updated </h2>
 
-📅 **June 24, 2025**  
+![Last Commit](https://img.shields.io/github/last-commit/rachelgriffard/bioinformatics-pipelines)  
 ✍️ Maintained by [Rachel Griffard-Smith](https://github.com/rachelgriffard)  
 📫 Contact: Leave a note in the `Issues` or `Pull requests` section
