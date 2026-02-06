@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# Validate paired FASTQ files
+echo "Validating paired FASTQ files..."
+echo "Sample_ID,R1_reads,R2_reads,Status" > validation_report.csv
+
+for r1_file in *_1.fastq.gz; do
+    # Get the base name (e.g., SRR17827482 from SRR17827482_1.fastq.gz)
+    base_name=${r1_file%_1.fastq.gz}
+    r2_file="${base_name}_2.fastq.gz"
+    
+    if [[ -f "$r2_file" ]]; then
+        echo "Checking $base_name..."
+        
+        # Count reads (divide by 4 since each read has 4 lines)
+        r1_count=$(zcat "$r1_file" | wc -l)
+        r2_count=$(zcat "$r2_file" | wc -l)
+        
+        r1_reads=$((r1_count / 4))
+        r2_reads=$((r2_count / 4))
+        
+        if [[ $r1_count -eq $r2_count ]]; then
+            status="OK"
+            echo "  ✓ $base_name: $r1_reads reads each"
+        else
+            status="MISMATCH"
+            echo "  ✗ $base_name: R1=$r1_reads, R2=$r2_reads reads"
+        fi
+        
+        echo "$base_name,$r1_reads,$r2_reads,$status" >> validation_report.csv
+    else
+        echo "  ✗ Missing R2 file for $base_name"
+        echo "$base_name,N/A,N/A,MISSING_R2" >> validation_report.csv
+    fi
+done
+
+echo ""
+echo "Validation complete. Check validation_report.csv for details."
+echo ""
+echo "Files with issues:"
+grep -v "OK" validation_report.csv | grep -v "Sample_ID"
