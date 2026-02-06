@@ -3,7 +3,7 @@
 #SBATCH --partition=biostat           # Partition Name (Required)
 #SBATCH --mail-type=ALL       # Mail events (NONE, BEGIN, END, FAIL, ALL)
 #SBATCH --mail-user=rgriffard@kumc.edu     # Where to send mail	
-#SBATCH --ntasks=8                   # Run on a single CPU
+#SBATCH --ntasks=16                   # Run on a single CPU
 #SBATCH --nodes=1
 #SBATCH --mem=64gb                    # Job memory request
 #SBATCH --time=140:00:00             # Time limit days-hrs:min:sec
