@@ -1,4 +1,4 @@
-# Qiagen IPA Analysis - Kalyani
+# Qiagen IPA Analysis
 # Rachel Griffard-Smith
 #
 # 071025
